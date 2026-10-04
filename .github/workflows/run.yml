@@ -63,13 +63,17 @@ jobs:
 
           OCI="$HOME/bin/oci"
 
+          mkdir -p "$HOME/.ssh"
+
+          printf "%s\n" "$SSH_KEY" > "$HOME/.ssh/minecraft_authorized_key.pub"
+          chmod 600 "$HOME/.ssh/minecraft_authorized_key.pub"
+
           AD=$("$OCI" iam availability-domain list \
             --compartment-id "${TENANCY_ID//[[:space:]]/}" \
             --query "data[0].name" \
             --raw-output)
 
           echo "Disponibilité ciblée : $AD"
-
           echo "Tentative de création de la VM ARM..."
 
           "$OCI" compute instance launch \
@@ -81,4 +85,4 @@ jobs:
             --image-id "${IMAGE_ID//[[:space:]]/}" \
             --subnet-id "${SUBNET_ID//[[:space:]]/}" \
             --assign-public-ip true \
-            --ssh-authorized-keys "$SSH_KEY"
+            --ssh-authorized-keys-file "$HOME/.ssh/minecraft_authorized_key.pub"
