@@ -20,9 +20,9 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist
 
-      - name: Create private key file
+      - name: Decode private key file
         run: |
-          echo "${{ secrets.OCI_PRIVATE_KEY }}" > /tmp/oci_api_key.pem
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" | base64 --decode > /tmp/oci_api_key.pem
           chmod 600 /tmp/oci_api_key.pem
 
       - name: Run instance creator
