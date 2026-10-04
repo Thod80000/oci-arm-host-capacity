@@ -1,32 +1,40 @@
-name: Reveal Secrets
+name: Create OCI Instance
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
 
 jobs:
-  inspect:
+  run-script:
     runs-on: ubuntu-latest
     steps:
-      - name: Print secrets safely
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Write private key file
         env:
-          REGION: ${{ secrets.OCI_REGION }}
-          USER_ID: ${{ secrets.OCI_USER_ID }}
-          TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
-          FINGERPRINT: ${{ secrets.OCI_KEY_FINGERPRINT }}
-          SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
-          IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+          RAW_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
-          # On remplace les caractères pour contourner le masquage automatique de GitHub
-          echo "=== VERIFICATION DES SECRETS ==="
-          echo -n "OCI_REGION: "
-          echo "$REGION" | sed 's/./& /g'
-          echo -n "OCI_KEY_FINGERPRINT: "
-          echo "$FINGERPRINT" | sed 's/./& /g'
-          echo -n "OCI_TENANCY_ID: "
-          echo "${TENANCY_ID:0:25}" | sed 's/./& /g'
-          echo -n "OCI_USER_ID: "
-          echo "${USER_ID:0:25}" | sed 's/./& /g'
-          echo -n "OCI_SUBNET_ID: "
-          echo "${SUBNET_ID:0:25}" | sed 's/./& /g'
-          echo -n "OCI_IMAGE_ID: "
-          echo "${IMAGE_ID:0:25}" | sed 's/./& /g'
+          printf "%s\n" "$RAW_KEY" > /tmp/oci_api_key.pem
+          chmod 600 /tmp/oci_api_key.pem
+
+      - name: Run instance creator
+        env:
+          OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
+          OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
+          OCI_KEY_FINGERPRINT: ${{ secrets.OCI_KEY_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
+          OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+          OCI_PRIVATE_KEY_FILENAME: /tmp/oci_api_key.pem
+        run: php index.php
