@@ -11,10 +11,12 @@ jobs:
     steps:
       - name: Install OCI CLI
         run: |
-          bash -c "$(curl -L https://githubusercontent.com)" -- --accept-all-defaults
-          echo "/home/runner/bin" >> $GITHUB_PATH
+          curl -L -O https://githubusercontent.com
+          chmod +x install.sh
+          ./install.sh --accept-all-defaults
+          echo "/home/runner/bin" >> "$GITHUB_PATH"
 
-      - name: Configure OCI
+      - name: Configure OCI Credentials
         env:
           USER_ID: ${{ secrets.OCI_USER_ID }}
           TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
@@ -30,23 +32,24 @@ jobs:
           [DEFAULT]
           user=${USER_ID//[[:space:]]/}
           fingerprint=${FINGERPRINT//[[:space:]]/}
-          key_file=~/.oci/oci_api_key.pem
+          key_file=/home/runner/.oci/oci_api_key.pem
           tenancy=${TENANCY_ID//[[:space:]]/}
           region=${REGION//[[:space:]]/}
           EOF
 
-      - name: Try Create Instance
+      - name: Attempt Instance Launch
         env:
           SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
           IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
           SSH_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+          TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
         run: |
-          AD=$(oci iam availability-domain list --query "data[0].name" --raw-output)
-          echo "Tentative sur l'Availability Domain : $AD"
+          AD=$(/home/runner/bin/oci iam availability-domain list --query "data[0].name" --raw-output)
+          echo "Disponibilité ciblée : $AD"
 
-          oci compute instance launch \
+          /home/runner/bin/oci compute instance launch \
             --availability-domain "$AD" \
-            --compartment-id "${{ secrets.OCI_TENANCY_ID }}" \
+            --compartment-id "${TENANCY_ID//[[:space:]]/}" \
             --shape "VM.Standard.A1.Flex" \
             --shape-config '{"ocpus": 2, "memoryInGBs": 12}' \
             --display-name "Minecraft-Server" \
