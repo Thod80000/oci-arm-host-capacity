@@ -8,13 +8,23 @@ on:
 jobs:
   create-instance:
     runs-on: ubuntu-latest
+
     steps:
       - name: Install OCI CLI
         run: |
-          curl -L -O https://githubusercontent.com
+          set -e
+
+          curl -L https://raw.githubusercontent.com/oracle/oci-cli/master/scripts/install/install.sh -o install.sh
           chmod +x install.sh
-          ./install.sh --accept-all-defaults
-          echo "/home/runner/bin" >> "$GITHUB_PATH"
+
+          ./install.sh \
+            --accept-all-defaults \
+            --exec-dir "$HOME/bin" \
+            --install-dir "$HOME/lib/oracle-cli"
+
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+          "$HOME/bin/oci" --version
 
       - name: Configure OCI Credentials
         env:
@@ -24,18 +34,23 @@ jobs:
           REGION: ${{ secrets.OCI_REGION }}
           KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
-          mkdir -p ~/.oci
-          printf "%s\n" "$KEY_CONTENT" > ~/.oci/oci_api_key.pem
-          chmod 600 ~/.oci/oci_api_key.pem
+          set -e
 
-          cat <<EOF > ~/.oci/config
+          mkdir -p "$HOME/.oci"
+
+          printf "%s\n" "$KEY_CONTENT" > "$HOME/.oci/oci_api_key.pem"
+          chmod 600 "$HOME/.oci/oci_api_key.pem"
+
+          cat > "$HOME/.oci/config" <<EOF
           [DEFAULT]
           user=${USER_ID//[[:space:]]/}
           fingerprint=${FINGERPRINT//[[:space:]]/}
-          key_file=/home/runner/.oci/oci_api_key.pem
+          key_file=$HOME/.oci/oci_api_key.pem
           tenancy=${TENANCY_ID//[[:space:]]/}
           region=${REGION//[[:space:]]/}
           EOF
+
+          "$HOME/bin/oci" iam region list --query "data[0].name" --raw-output
 
       - name: Attempt Instance Launch
         env:
@@ -44,10 +59,20 @@ jobs:
           SSH_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
           TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
         run: |
-          AD=$(/home/runner/bin/oci iam availability-domain list --query "data[0].name" --raw-output)
+          set -e
+
+          OCI="$HOME/bin/oci"
+
+          AD=$("$OCI" iam availability-domain list \
+            --compartment-id "${TENANCY_ID//[[:space:]]/}" \
+            --query "data[0].name" \
+            --raw-output)
+
           echo "Disponibilité ciblée : $AD"
 
-          /home/runner/bin/oci compute instance launch \
+          echo "Tentative de création de la VM ARM..."
+
+          "$OCI" compute instance launch \
             --availability-domain "$AD" \
             --compartment-id "${TENANCY_ID//[[:space:]]/}" \
             --shape "VM.Standard.A1.Flex" \
