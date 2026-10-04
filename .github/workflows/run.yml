@@ -6,35 +6,51 @@ on:
     - cron: '*/10 * * * *'
 
 jobs:
-  run-script:
+  create-instance:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.2'
-
-      - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist
-
-      - name: Write private key file
-        env:
-          RAW_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+      - name: Install OCI CLI
         run: |
-          printf "%s\n" "$RAW_KEY" > /tmp/oci_api_key.pem
-          chmod 600 /tmp/oci_api_key.pem
+          bash -c "$(curl -L https://githubusercontent.com)" -- --accept-all-defaults
+          echo "/home/runner/bin" >> $GITHUB_PATH
 
-      - name: Run instance creator
+      - name: Configure OCI
         env:
-          OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
-          OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
-          OCI_KEY_FINGERPRINT: ${{ secrets.OCI_KEY_FINGERPRINT }}
-          OCI_REGION: ${{ secrets.OCI_REGION }}
-          OCI_SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
-          OCI_IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
-          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
-          OCI_PRIVATE_KEY_FILENAME: /tmp/oci_api_key.pem
-        run: php index.php
+          USER_ID: ${{ secrets.OCI_USER_ID }}
+          TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
+          FINGERPRINT: ${{ secrets.OCI_KEY_FINGERPRINT }}
+          REGION: ${{ secrets.OCI_REGION }}
+          KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.oci
+          printf "%s\n" "$KEY_CONTENT" > ~/.oci/oci_api_key.pem
+          chmod 600 ~/.oci/oci_api_key.pem
+
+          cat <<EOF > ~/.oci/config
+          [DEFAULT]
+          user=${USER_ID//[[:space:]]/}
+          fingerprint=${FINGERPRINT//[[:space:]]/}
+          key_file=~/.oci/oci_api_key.pem
+          tenancy=${TENANCY_ID//[[:space:]]/}
+          region=${REGION//[[:space:]]/}
+          EOF
+
+      - name: Try Create Instance
+        env:
+          SUBNET_ID: ${{ secrets.OCI_SUBNET_ID }}
+          IMAGE_ID: ${{ secrets.OCI_IMAGE_ID }}
+          SSH_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+        run: |
+          AD=$(oci iam availability-domain list --query "data[0].name" --raw-output)
+          echo "Tentative sur l'Availability Domain : $AD"
+
+          oci compute instance launch \
+            --availability-domain "$AD" \
+            --compartment-id "${{ secrets.OCI_TENANCY_ID }}" \
+            --shape "VM.Standard.A1.Flex" \
+            --shape-config '{"ocpus": 2, "memoryInGBs": 12}' \
+            --display-name "Minecraft-Server" \
+            --image-id "${IMAGE_ID//[[:space:]]/}" \
+            --subnet-id "${SUBNET_ID//[[:space:]]/}" \
+            --assign-public-ip true \
+            --ssh-authorized-keys "$SSH_KEY"
